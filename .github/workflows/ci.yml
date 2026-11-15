@@ -1,0 +1,83 @@
+name: CI
+
+# Actions are pinned to commit SHAs. A tag can be moved to point at different code;
+# a SHA cannot. Dependabot keeps these current and raises a PR when one moves.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.18 is the floor the package declares. 24 is where consumers are.
+        node-version: ["22.18", "24"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install
+        run: npm ci
+      - name: Types, including the tests
+        run: npm run typecheck
+      # The suite runs the CLI as a subprocess against a deliberately broken agent
+      # on loopback, so this covers the wiring as well as the units. Nothing in it
+      # reaches the network and nothing needs a secret.
+      - name: Probes, safety rails and the end to end run
+        run: npm test
+
+  # The harness is only useful if it still refuses to run without authorisation,
+  # still stops at its request ceiling, and still will not follow a redirect off
+  # the authorised host. Those three are what keep it an assessment tool rather
+  # than an attack tool, so they get a check of their own with a name that says
+  # what was lost if it goes red.
+  safety-rails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.18"
+      - name: Install
+        run: npm ci
+      - name: It will not run unauthorised, off budget, or off host
+        run: |
+          node --test test/harness.test.ts 2>&1 | tee /tmp/rails.txt
+          for claim in \
+            "a config with no authorization block is refused" \
+            "the request budget is enforced" \
+            "a redirect off the authorised host is not followed" \
+            "secrets never reach the reply text" \
+            "a probe that throws is inconclusive, never failed" \
+            "inconclusive controls stay out of failed"; do
+            grep -q "ok .* - $claim" /tmp/rails.txt \
+              || { echo "MISSING OR FAILING: $claim"; exit 1; }
+          done
+          echo "every safety rail is still tested and still passing"
+
+  # One stable name for branch protection to require, so the matrix can change
+  # without the ruleset waiting on a check that no longer exists. always() matters:
+  # without it this is skipped when a dependency fails, and a skipped required
+  # check never reports a failure.
+  all-checks-passed:
+    if: always()
+    needs: [suite, safety-rails]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every required job must have succeeded
+        run: |
+          echo "suite:        ${{ needs.suite.result }}"
+          echo "safety-rails: ${{ needs['safety-rails'].result }}"
+          if [ "${{ needs.suite.result }}" != "success" ] || \
+             [ "${{ needs['safety-rails'].result }}" != "success" ]; then
+            echo "A required job did not succeed."
+            exit 1
+          fi
+          echo "All required checks passed."

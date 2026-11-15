@@ -1,5 +1,7 @@
 # Red Team Harness
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/secured-ai/red-team-harness/badge)](https://scorecard.dev/viewer/?uri=github.com/secured-ai/red-team-harness)
+
 Runs the SecuredAI agent probe set against a live deployment and reports the outcome
 to the certification register.
 

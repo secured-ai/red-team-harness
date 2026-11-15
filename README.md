@@ -63,15 +63,20 @@ probed yet. They do not suspend a certificate, so they come after the ones that 
 
 ## Use
 
+Not on npm yet, so run it from a clone. Node 22.18 or newer, which strips the types
+without a build step.
+
 ```
-npx red-team-harness probe --config target.json
+git clone https://github.com/secured-ai/red-team-harness
+cd red-team-harness && npm ci
+node src/cli.ts probe --config target.json
 ```
 
 A plain run attacks the target, writes `probe-report.json` and posts nothing. Submission
 is opt in:
 
 ```
-CERT_SUBMIT_SECRET=... npx red-team-harness probe --config target.json --submit
+CERT_SUBMIT_SECRET=... node src/cli.ts probe --config target.json --submit
 ```
 
 Exit codes: `0` nothing failed, `1` at least one control failed, `2` bad configuration,

@@ -20,8 +20,8 @@ const exec = promisify(execFile);
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
 function capture() {
-  const lines = [];
-  return { lines, write: (s) => lines.push(s), text: () => lines.join('\n') };
+  const lines: string[] = [];
+  return { lines, write: (s: string) => { lines.push(s); }, text: () => lines.join('\n') };
 }
 
 test('the demo probes a loopback target and nothing else', () => {
@@ -54,8 +54,8 @@ test('the demo command accepts no target, so it cannot be aimed at anyone', asyn
 test('self-authorisation does not leak into the ordinary probe path', () => {
   // The demo fills in its own authorisation block. A config that supplies none
   // must still be refused, or the demo would have quietly removed the control.
-  const withoutAuth = { ...demoConfig(45678) };
-  delete withoutAuth.authorization;
+  const { authorization, ...withoutAuth } = demoConfig(45678);
+  assert.ok(authorization, 'the demo config should carry one of its own');
   assert.throws(() => parseConfig(withoutAuth), /authoriz/i);
 });
 
@@ -96,7 +96,7 @@ test('a seed replays the same run', async () => {
   await runDemo({ write: second.write, seed });
   assert.ok(second.text().includes(`--seed ${seed}`), 'the replay should report the seed it was given');
 
-  const verdicts = (t) => t.split('\n').filter(l => /^\s{2}(held|failed|inconclusive)/.test(l));
+  const verdicts = (text: string) => text.split('\n').filter(l => /^\s{2}(held|failed|inconclusive)/.test(l));
   assert.deepEqual(verdicts(second.text()), verdicts(first.text()));
 });
 

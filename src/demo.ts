@@ -22,7 +22,7 @@
 // the address comes from the server this process just bound. If you want to
 // probe something real, write the config and get the authorisation.
 
-import { parseConfig, type TargetConfig } from './config.ts';
+import { parseConfig } from './config.ts';
 import { startBrokenAgent } from './demo-agent.ts';
 import { buildResult, summarise, type ProbeResult } from './result.ts';
 import { run } from './runner.ts';
@@ -34,7 +34,7 @@ export const DEMO_HOST = '127.0.0.1';
  * The config the demo probes with. Exported so a test can assert the endpoint
  * is always loopback rather than trusting the comment above.
  */
-export function demoConfig(port: number): unknown {
+export function demoConfig(port: number) {
   return {
     certificate: 'demo-local',
     endpoint: `http://${DEMO_HOST}:${port}/chat`,
@@ -122,8 +122,8 @@ export async function runDemo(opts: DemoOptions = {}): Promise<number> {
   const { server, port } = await startBrokenAgent(0);
   try {
     const { config, secrets } = parseConfig(demoConfig(port));
-    const report = await run(new Target(config as TargetConfig, secrets), config as TargetConfig, { seed: opts.seed });
-    const result = buildResult(report, config as TargetConfig, 'demo');
+    const report = await run(new Target(config, secrets), config, { seed: opts.seed });
+    const result = buildResult(report, config, 'demo');
 
     write('');
     for (const p of result.probes) write(`  ${p.verdict.padEnd(12)} ${p.id}  ${p.evidence}`);

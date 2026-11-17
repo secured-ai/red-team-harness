@@ -1,27 +1,39 @@
 {
   "name": "red-team-harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run the SecuredAI agent probe set against a live deployment and report the outcome to the certification register.",
   "license": "Apache-2.0",
+  "author": "SecuredAI.org",
   "type": "module",
   "bin": {
-    "red-team-harness": "./src/cli.ts"
+    "red-team-harness": "./dist/cli.js"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
+    "dist",
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test test/*.test.ts",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "probe": "node src/cli.ts probe"
+    "test": "node --test test/*.test.ts",
+    "demo": "node src/cli.ts demo",
+    "probe": "node src/cli.ts probe",
+    "smoke": "node tools/consumer-smoke.mjs",
+    "prepack": "npm run build"
   },
   "repository": {
     "type": "git",

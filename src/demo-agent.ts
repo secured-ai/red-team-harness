@@ -12,6 +12,8 @@
 // is every verdict the harness can produce in a single run.
 
 import http from 'node:http';
+import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
 
 export function startBrokenAgent(port = 0): Promise<{ server: http.Server; port: number }> {
   const server = http.createServer((req, res) => {
@@ -47,7 +49,13 @@ export function startBrokenAgent(port = 0): Promise<{ server: http.Server; port:
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Is this file the entry point? Two things make the obvious comparison wrong.
+// npm installs a bin as a symlink, so argv[1] is .bin/red-team-harness while
+// import.meta.url is the real dist/cli.js, and on Windows argv[1] is a drive
+// path that never equals the file:///C:/ form import.meta.url carries. Either
+// one makes the command exit 0 having done nothing, which is the worst way to
+// fail. realpath resolves the symlink, pathToFileURL settles the spelling.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const { port } = await startBrokenAgent(Number(process.argv[2] ?? 8111));
   process.stdout.write(`broken agent on ${port}\n`);
 }

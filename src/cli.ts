@@ -13,6 +13,8 @@ import { Target } from './target.ts';
 import { run } from './runner.ts';
 import { buildResult, summarise } from './result.ts';
 import { submit, SubmitError } from './submit.ts';
+import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -112,7 +114,13 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   return result.failed.length ? 1 : 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Is this file the entry point? Two things make the obvious comparison wrong.
+// npm installs a bin as a symlink, so argv[1] is .bin/red-team-harness while
+// import.meta.url is the real dist/cli.js, and on Windows argv[1] is a drive
+// path that never equals the file:///C:/ form import.meta.url carries. Either
+// one makes the command exit 0 having done nothing, which is the worst way to
+// fail. realpath resolves the symlink, pathToFileURL settles the spelling.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main().then(code => process.exit(code), err => {
     process.stderr.write(`${(err as Error).stack ?? err}\n`);
     process.exit(4);

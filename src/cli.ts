@@ -8,6 +8,7 @@
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { ConfigError, loadConfig } from './config.ts';
+import { runDemo } from './demo.ts';
 import { Target } from './target.ts';
 import { run } from './runner.ts';
 import { buildResult, summarise } from './result.ts';
@@ -18,7 +19,11 @@ const { version } = require('../package.json') as { version: string };
 
 const USAGE = `red-team-harness ${version}
 
+  red-team-harness demo
   red-team-harness probe --config <file> [options]
+
+  demo                  probe a broken agent this command starts on loopback,
+                        so you can see the output without a target of your own
 
   --config <file>       target configuration (required)
   --submit              post the result to the register (default: write a report only)
@@ -47,6 +52,11 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const args = parseArgs(argv);
   if (args.help || args.h || argv.length === 0) { process.stdout.write(USAGE); return 0; }
+  if (args._ === 'demo') {
+    // No endpoint, host or config is read here. The demo probes a server it
+    // starts itself, which is the only reason it may authorise its own run.
+    return runDemo({ seed: typeof args.seed === 'string' ? args.seed : undefined });
+  }
   if (args._ !== 'probe') { process.stderr.write(`unknown command. ${USAGE}`); return 2; }
   if (typeof args.config !== 'string') { process.stderr.write(`--config is required\n`); return 2; }
 

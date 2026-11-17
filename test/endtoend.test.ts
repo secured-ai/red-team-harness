@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-import { startBrokenAgent } from './fixtures/broken-agent.ts';
+import { startBrokenAgent } from '../src/demo-agent.ts';
 import { REQUIRED_CONTROLS } from '../src/controls.ts';
 
 const run = promisify(execFile);

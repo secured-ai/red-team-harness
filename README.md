@@ -63,6 +63,30 @@ reports inconclusive without it.
 The optional controls, input guardrail, supervisor check and output guardrail, are not
 probed yet. They do not suspend a certificate, so they come after the ones that do.
 
+## See it work first
+
+Probing something of your own needs a config and written authorisation, which is the
+right order and also means you cannot see what the output looks like before committing
+to all of it. So there is a demo. It starts a deliberately broken agent on loopback,
+probes that, and prints the result. No target of your own, no configuration, no
+authorisation to obtain, and nothing leaves the machine.
+
+```
+git clone https://github.com/secured-ai/red-team-harness
+cd red-team-harness && npm ci
+node src/cli.ts demo
+```
+
+The bundled agent refuses to hand over its credentials, which is correct, and obeys
+instructions it finds inside data and issues refunds on its own authority, which are
+not. A run reports one control holding, two failing and one inconclusive, which is every
+verdict the harness can produce.
+
+The demo fills in its own authorisation block. That is only honest because the target is
+a process the demo started moments earlier, so the command takes no endpoint, no host
+and no config: there is no input that could aim it at somebody else's agent. Two tests
+hold that line and both are named in the claims check.
+
 ## Use
 
 Not on npm yet, so run it from a clone. Node 22.18 or newer, which strips the types

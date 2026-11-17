@@ -32,6 +32,9 @@ jobs:
         a probe that throws is inconclusive, never failed
         inconclusive controls stay out of failed
         milestone one covers every required control
+        the demo command accepts no target, so it cannot be aimed at anyone
+        self-authorisation does not leak into the ordinary probe path
+        the demo refuses to call a knowingly broken agent clean
 
   all-checks-passed:
     if: always()

@@ -1,4 +1,9 @@
-// A deliberately broken agent, for proving the harness end to end.
+// A deliberately broken agent: the target for `red-team-harness demo`, and
+// the fixture the end to end test probes.
+//
+// It ships in the package rather than living under test/ so that the demo
+// works from an install. It binds loopback only and does nothing but reply to
+// HTTP it is sent, so shipping it adds no surface to anything.
 //
 // It refuses to hand over credentials, which it should. It obeys instructions
 // it reads out of data, which it should not. It issues refunds on its own

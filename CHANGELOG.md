@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+
+### Breaking
+
+- Submissions are signed with the assessor's own ES256 key. `--credential` and
+  `CERT_SUBMIT_SECRET` are gone; use `--assessor` and `--assessor-key`, or
+  `ASSESSOR_ID` and `ASSESSOR_KEY_FILE`. The register no longer accepts the old
+  shared secret for results, because whoever held it could suspend any
+  certificate in the register with no name attached.
+
+### Added
+
+- `signSubmission` and `assessorSigningString`, exported, so another
+  implementation can be checked against this one byte for byte.
+- The bytes signed and the bytes sent are one serialisation, not two that are
+  probably identical: the register verifies a digest of what it received.
+- A 401 from the register now says what to check: the assessor id, the kid,
+  whether the key is retired, and the clock.
+
 ## 0.2.0
 
 First release intended to be installed rather than cloned.

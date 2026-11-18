@@ -3,3 +3,7 @@ probe-report.json
 *.log
 .DS_Store
 dist/
+
+# Assessor keys from `red-team-harness keygen`. Never commit the private one.
+*.private.jwk.json
+*.public.jwk.json

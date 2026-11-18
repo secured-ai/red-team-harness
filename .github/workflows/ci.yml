@@ -35,6 +35,7 @@ jobs:
         the demo command accepts no target, so it cannot be aimed at anyone
         self-authorisation does not leak into the ordinary probe path
         the demo refuses to call a knowingly broken agent clean
+        the signature covers exactly the bytes that were sent
 
   # The suite runs against the source tree. An installed copy differs in two
   # ways no test can see: Node refuses to strip types under node_modules, and

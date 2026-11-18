@@ -276,37 +276,93 @@ test('the authorisation digest changes when the authorisation does', async () =>
 
 // ---------- submit ----------
 
+// A key generated for this run, the way an assessor's would be by the
+// register's tools/assessor.mjs keygen. Nothing is committed and nothing
+// reaches the register.
+const ASSESSOR = await (async () => {
+  const { webcrypto } = await import('node:crypto');
+  const pair = await webcrypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const privateJwk = { ...(await webcrypto.subtle.exportKey('jwk', pair.privateKey)), kid: 'harbourline-1' };
+  return { publicKey: pair.publicKey, key: { assessorId: 'harbourline', privateJwk } };
+})();
+
+async function aResult() {
+  const agent = fakeAgent(() => 'x');
+  const { target, config } = targetFor({}, agent);
+  return buildResult(await run(target, config, { seed: 'a', probes: [] }), config, '0.1.0');
+}
+
 test('submit sends the shape the register parses', async () => {
   let sent: any = null;
   const fetcher = async (_url: string, init: RequestInit) => {
-    sent = { headers: init.headers, body: JSON.parse(String(init.body)) };
+    sent = { headers: init.headers, body: JSON.parse(new TextDecoder().decode(init.body as Uint8Array)) };
     return new Response(JSON.stringify({ recorded: true }), { status: 200 });
   };
-  const agent = fakeAgent(() => 'x');
-  const { target, config } = targetFor({}, agent);
-  const result = buildResult(await run(target, config, { seed: 'a', probes: [] }), config, '0.1.0');
-  await submit(result, { endpoint: 'https://securedai.org/api/certification/probe', credential: 'abc', fetcher });
+  await submit(await aResult(), { endpoint: 'https://securedai.org/api/certification/probe', key: ASSESSOR.key, fetcher });
 
   assert.equal(sent.body.action, 'result');
   assert.equal(sent.body.certificate, 'cert-demo');
   assert.equal(typeof sent.body.result, 'object');
-  assert.equal((sent.headers as Record<string, string>)['x-cert-cron-secret'], 'abc');
+  const h = sent.headers as Record<string, string>;
+  assert.equal(h['x-assessor-id'], 'harbourline');
+  assert.equal(h['x-assessor-kid'], 'harbourline-1');
+  assert.ok(!('x-cert-cron-secret' in h), 'the shared scheduler secret must never be sent again');
 });
 
-test('submit refuses plain http and an empty credential', async () => {
-  const agent = fakeAgent(() => 'x');
-  const { target, config } = targetFor({}, agent);
-  const result = buildResult(await run(target, config, { seed: 'a', probes: [] }), config, '0.1.0');
-  await assert.rejects(() => submit(result, { endpoint: 'http://securedai.org/x', credential: 'a' }), SubmitError);
-  await assert.rejects(() => submit(result, { endpoint: 'https://securedai.org/x', credential: '' }), SubmitError);
+test('the signature covers exactly the bytes that were sent', async () => {
+  // The register verifies a digest of the body it received. Signing one
+  // serialisation and sending another would fail there and nowhere here.
+  const { webcrypto } = await import('node:crypto');
+  const { assessorSigningString } = await import('../src/submit.ts');
+  let init: RequestInit | null = null;
+  const fetcher = async (_url: string, i: RequestInit) => { init = i; return new Response('{}', { status: 200 }); };
+  await submit(await aResult(), { endpoint: 'https://securedai.org/api/certification/probe', key: ASSESSOR.key, fetcher });
+
+  const h = init!.headers as Record<string, string>;
+  const message = await assessorSigningString('POST', '/api/certification/probe', h['x-assessor-timestamp']!,
+    h['x-assessor-nonce']!, init!.body as Uint8Array);
+  const ok = await webcrypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, ASSESSOR.publicKey,
+    Buffer.from(h['x-assessor-signature']!, 'base64url'), new TextEncoder().encode(message));
+  assert.equal(ok, true);
+  assert.match(message, /^SAR1\nPOST\n\/api\/certification\/probe\n\d+\n[A-Za-z0-9_-]{16,}\n[0-9a-f]{64}$/);
 });
 
-test('a 401 from the register is reported as a credential problem', async () => {
-  const fetcher = async () => new Response('{"error":"unauthorized"}', { status: 401 });
-  const agent = fakeAgent(() => 'x');
-  const { target, config } = targetFor({}, agent);
-  const result = buildResult(await run(target, config, { seed: 'a', probes: [] }), config, '0.1.0');
+test('submit refuses plain http, a missing key, and a public key', async () => {
+  const result = await aResult();
+  await assert.rejects(() => submit(result, { endpoint: 'http://securedai.org/x', key: ASSESSOR.key }), SubmitError);
+  await assert.rejects(() => submit(result, { endpoint: 'https://securedai.org/x', key: undefined as any }), SubmitError);
+  const { d: _d, ...publicOnly } = ASSESSOR.key.privateJwk;
   await assert.rejects(
-    () => submit(result, { endpoint: 'https://securedai.org/x', credential: 'bad', fetcher }),
-    (e: SubmitError) => e.status === 401 && /credential/.test(e.message));
+    () => submit(result, { endpoint: 'https://securedai.org/x', key: { assessorId: 'harbourline', privateJwk: publicOnly },
+      fetcher: async () => new Response('{}') }),
+    (e: SubmitError) => /public key/.test(e.message));
+});
+
+test('a 401 from the register says what to check', async () => {
+  const fetcher = async () => new Response('{"error":"unauthorized"}', { status: 401 });
+  await assert.rejects(
+    async () => submit(await aResult(), { endpoint: 'https://securedai.org/x', key: ASSESSOR.key, fetcher }),
+    (e: SubmitError) => e.status === 401 && /signature/.test(e.message) && /retired/.test(e.message));
+});
+
+test('keygen writes a key that signs, a public half with no private scalar, and never overwrites', async () => {
+  const { mkdtempSync, readFileSync, statSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { keygen } = await import('../src/keygen.ts');
+  const { signSubmission } = await import('../src/submit.ts');
+  const dir = mkdtempSync(join(tmpdir(), 'rth-keygen-'));
+
+  const { privatePath, publicPath } = await keygen('hl-test', dir);
+  const priv = JSON.parse(readFileSync(privatePath, 'utf8'));
+  const pub = JSON.parse(readFileSync(publicPath, 'utf8'));
+  assert.ok(priv.d, 'the private file holds the private scalar');
+  assert.equal(pub.d, undefined, 'the file meant to be sent must not');
+  assert.equal(pub.kid, 'hl-test');
+  if (process.platform !== 'win32') assert.equal(statSync(privatePath).mode & 0o077, 0, 'the private key is readable by its owner only');
+
+  const headers = await signSubmission('POST', '/api/certification/probe', new Uint8Array([1]), { assessorId: 'hl', privateJwk: priv });
+  assert.equal(headers['x-assessor-kid'], 'hl-test');
+
+  await assert.rejects(() => keygen('hl-test', dir), /already exists/);
 });

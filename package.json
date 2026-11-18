@@ -1,6 +1,6 @@
 {
   "name": "red-team-harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run the SecuredAI agent probe set against a live deployment and report the outcome to the certification register.",
   "license": "Apache-2.0",
   "author": "SecuredAI.org",

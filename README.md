@@ -158,19 +158,41 @@ than left to each probe to honour: a hard request ceiling, a pause between reque
 a refusal to follow a redirect to another host. A harness that can be walked off its
 target by a `302` can be used to attack a third party.
 
-## A note to the register
+## Submitting a result
 
-Result submission currently authenticates with `x-cert-cron-secret`, the same shared
-secret that drives the register's own scheduler. An assessor who can post a result can
-therefore also enumerate which certificates are due, and post a result against any
-certificate, including one belonging to another assessor's client. Given that a result
-naming a required control suspends a live certificate, that is more authority than
-submission needs.
+`--submit` posts the result to the certification register, signed with your firm's own
+key. The register accepts it only when the signature comes from an active key of an
+active, accredited assessor, and only for a certificate bound to that assessor. A
+suspension caused by your result records your assessor id and a digest of exactly the
+bytes you signed, so what you submitted is attributable to you and to nobody else.
 
-A per-assessor credential, scoped to the certificates that assessor is accredited for,
-would close it. This is a register-side change and nothing a client can fix. The harness
-sends whatever credential it is given under the header the register expects today, so it
-keeps working either way.
+Generate the key yourself. The private half never leaves your machine; send SecuredAI
+the public half and it goes into your record in the register.
+
+```
+node src/cli.ts keygen --kid harbourline-2026
+```
+
+```
+ASSESSOR_ID=harbourline ASSESSOR_KEY_FILE=harbourline-2026.private.jwk.json \
+  node src/cli.ts probe --config target.json --submit
+```
+
+What is signed, if you are implementing this elsewhere:
+
+```
+SAR1\n<METHOD>\n<path>\n<timestamp in ms>\n<nonce>\n<sha256 hex of the body>
+```
+
+ES256, signature in P1363 form (r then s), base64url without padding, sent as
+`x-assessor-id`, `x-assessor-kid`, `x-assessor-timestamp`, `x-assessor-nonce` and
+`x-assessor-signature`. The register refuses a timestamp more than 60 seconds out and a
+nonce it has seen.
+
+This replaced a shared secret. Until 0.3 the register authenticated submissions with the
+same secret that drives its scheduler, so any assessor holding it could suspend any
+certificate, including another firm's client, read every certificate's probe schedule,
+and do both without their name attached.
 
 ## Writing a probe
 

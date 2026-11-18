@@ -9,12 +9,15 @@ import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { ConfigError, loadConfig } from './config.ts';
 import { runDemo } from './demo.ts';
+import { keygen } from './keygen.ts';
 import { Target } from './target.ts';
 import { run } from './runner.ts';
 import { buildResult, summarise } from './result.ts';
 import { submit, SubmitError } from './submit.ts';
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import type { JsonWebKey } from 'node:crypto';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
@@ -22,16 +25,19 @@ const { version } = require('../package.json') as { version: string };
 const USAGE = `red-team-harness ${version}
 
   red-team-harness demo
+  red-team-harness keygen --kid <kid>
   red-team-harness probe --config <file> [options]
 
   demo                  probe a broken agent this command starts on loopback,
                         so you can see the output without a target of your own
+  keygen                generate your assessor signing key; send only the .public file
 
   --config <file>       target configuration (required)
   --submit              post the result to the register (default: write a report only)
   --register <url>      register endpoint
                         (default: https://securedai.org/api/certification/probe)
-  --credential <value>  submission credential (default: $CERT_SUBMIT_SECRET)
+  --assessor <id>       your assessor id in the register (default: $ASSESSOR_ID)
+  --assessor-key <file> your private ES256 JWK (default: $ASSESSOR_KEY_FILE)
   --seed <hex>          replay a previous run exactly
   --only <id,id>        run only these probe ids
   --out <file>          write the report here (default: probe-report.json)
@@ -54,6 +60,17 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const args = parseArgs(argv);
   if (args.help || args.h || argv.length === 0) { process.stdout.write(USAGE); return 0; }
+  if (args._ === 'keygen') {
+    try {
+      const { privatePath, publicPath } = await keygen(typeof args.kid === 'string' ? args.kid : '');
+      process.stdout.write(`wrote ${privatePath}  keep this: it signs your results, never send it anywhere\n` +
+        `wrote ${publicPath}  send this one to SecuredAI\n`);
+      return 0;
+    } catch (e) {
+      process.stderr.write(`keygen: ${(e as Error).message}\n`);
+      return 2;
+    }
+  }
   if (args._ === 'demo') {
     // No endpoint, host or config is read here. The demo probes a server it
     // starts itself, which is the only reason it may authorise its own run.
@@ -97,11 +114,20 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
   const endpoint = typeof args.register === 'string'
     ? args.register : 'https://securedai.org/api/certification/probe';
-  const credential = typeof args.credential === 'string'
-    ? args.credential : (process.env.CERT_SUBMIT_SECRET ?? '');
+  const assessorId = typeof args.assessor === 'string' ? args.assessor : (process.env.ASSESSOR_ID ?? '');
+  const keyFile = typeof args['assessor-key'] === 'string' ? args['assessor-key'] : (process.env.ASSESSOR_KEY_FILE ?? '');
 
   try {
-    const ack = await submit(result, { endpoint, credential });
+    if (!assessorId || !keyFile) {
+      throw new SubmitError('no assessor key: set ASSESSOR_ID and ASSESSOR_KEY_FILE, or pass --assessor and --assessor-key');
+    }
+    let privateJwk: JsonWebKey & { kid?: string };
+    try {
+      privateJwk = JSON.parse(readFileSync(keyFile, 'utf8'));
+    } catch (e) {
+      throw new SubmitError(`could not read the assessor key at ${keyFile}: ${(e as Error).message}`);
+    }
+    const ack = await submit(result, { endpoint, key: { assessorId, privateJwk } });
     log(`submitted: ${JSON.stringify(ack)}`);
   } catch (e) {
     if (e instanceof SubmitError) {

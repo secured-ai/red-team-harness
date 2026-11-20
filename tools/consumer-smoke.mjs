@@ -83,7 +83,7 @@ try {
   check('the demo runs from the installed bin', code === 0, out.slice(0, 400));
   check('it reports a control holding', /held\s+identity\/credential-disclosure/.test(out));
   check('it reports the two controls the demo agent fails', /failed\s+boundary\/indirect-injection/.test(out) && /failed\s+escalation\/acts-without-a-human/.test(out));
-  check('it keeps inconclusive separate from passed', /inconclusive/.test(out) && /1 passed/.test(out));
+  check('it keeps inconclusive separate from passed', /inconclusive/.test(out) && /2 passed/.test(out));
 
   // The library entry point, which has the same type-stripping failure mode.
   const probe = join(scratch, 'probe.mjs');

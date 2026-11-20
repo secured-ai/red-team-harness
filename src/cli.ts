@@ -7,13 +7,15 @@
 
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { ConfigError, loadConfig } from './config.ts';
+import { ConfigError, loadConfig, redact } from './config.ts';
 import { runDemo } from './demo.ts';
 import { keygen } from './keygen.ts';
 import { Target } from './target.ts';
 import { run } from './runner.ts';
 import { buildResult, summarise } from './result.ts';
 import { submit, SubmitError } from './submit.ts';
+import { renderReport, ReportError } from './report.ts';
+import type { Authorization } from './config.ts';
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
@@ -27,10 +29,13 @@ const USAGE = `red-team-harness ${version}
   red-team-harness demo
   red-team-harness keygen --kid <kid>
   red-team-harness probe --config <file> [options]
+  red-team-harness report --result <json> --config <file> [--html <file>] [--assessor-name <name>]
 
   demo                  probe a broken agent this command starts on loopback,
                         so you can see the output without a target of your own
   keygen                generate your assessor signing key; send only the .public file
+  report                rebuild the written report from a saved result and the
+                        config the run used
 
   --config <file>       target configuration (required)
   --submit              post the result to the register (default: write a report only)
@@ -40,7 +45,9 @@ const USAGE = `red-team-harness ${version}
   --assessor-key <file> your private ES256 JWK (default: $ASSESSOR_KEY_FILE)
   --seed <hex>          replay a previous run exactly
   --only <id,id>        run only these probe ids
-  --out <file>          write the report here (default: probe-report.json)
+  --out <file>          write the result here (default: probe-report.json)
+  --html <file>         write the written report here (default: probe-report.html)
+  --assessor-name <n>   your firm's name as it should appear on the report
   --quiet               print the summary line only
 `;
 
@@ -76,6 +83,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     // starts itself, which is the only reason it may authorise its own run.
     return runDemo({ seed: typeof args.seed === 'string' ? args.seed : undefined });
   }
+  if (args._ === 'report') return reportCommand(args);
   if (args._ !== 'probe') { process.stderr.write(`unknown command. ${USAGE}`); return 2; }
   if (typeof args.config !== 'string') { process.stderr.write(`--config is required\n`); return 2; }
 
@@ -103,9 +111,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const out = typeof args.out === 'string' ? args.out : 'probe-report.json';
   await writeFile(out, JSON.stringify(result, null, 2) + '\n', 'utf8');
 
+  const html = typeof args.html === 'string' ? args.html : 'probe-report.html';
+  await writeFile(html, redact(renderReport(result, config.authorization, {
+    assessor: typeof args['assessor-name'] === 'string' ? args['assessor-name'] : undefined,
+  }), secrets), 'utf8');
+
   for (const p of result.probes) log(`  ${p.verdict.padEnd(12)} ${p.id}  ${p.evidence}`);
   process.stdout.write(summarise(result) + '\n');
-  log(`report written to ${out}, replay with --seed ${result.seed}`);
+  log(`result written to ${out} and the written report to ${html}, replay with --seed ${result.seed}`);
 
   if (!args.submit) {
     log('not submitted. Pass --submit to post this to the register.');
@@ -138,6 +151,33 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     throw e;
   }
   return result.failed.length ? 1 : 0;
+}
+
+// Rebuild the written report later, from the saved result and the config the
+// run used. The config is read as plain JSON and never resolved against the
+// environment: only its authorisation block is needed, and reading it should
+// not need the target's credentials to be set.
+async function reportCommand(args: Record<string, string | boolean>): Promise<number> {
+  if (typeof args.result !== 'string' || typeof args.config !== 'string') {
+    process.stderr.write('report needs --result <probe-report.json> and --config <the config the run used>\n');
+    return 2;
+  }
+  try {
+    const result = JSON.parse(readFileSync(args.result, 'utf8'));
+    const raw = JSON.parse(readFileSync(args.config, 'utf8')) as { authorization?: Authorization };
+    if (!raw.authorization || typeof raw.authorization.scope !== 'string') {
+      throw new ReportError('the config has no authorization block');
+    }
+    const html = typeof args.html === 'string' ? args.html : 'probe-report.html';
+    await writeFile(html, renderReport(result, raw.authorization, {
+      assessor: typeof args['assessor-name'] === 'string' ? args['assessor-name'] : undefined,
+    }), 'utf8');
+    process.stdout.write(`wrote ${html}\n`);
+    return 0;
+  } catch (e) {
+    process.stderr.write(`report: ${(e as Error).message}\n`);
+    return 2;
+  }
 }
 
 // Is this file the entry point? Two things make the obvious comparison wrong.

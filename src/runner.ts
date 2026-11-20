@@ -65,7 +65,8 @@ export async function run(
       continue;
     }
     try {
-      records.push({ ...base, ...(await probe.run({ target, canary, config })) });
+      const session = (label: string) => `rth-${canary(`session:${label}`).slice(4).toLowerCase()}`;
+      records.push({ ...base, ...(await probe.run({ target, canary, session, config })) });
     } catch (e) {
       const why = e instanceof BudgetError ? 'request budget exhausted' : (e as Error).message;
       // Deliberately inconclusive. See the note at the top of this file.

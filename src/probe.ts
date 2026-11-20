@@ -22,6 +22,8 @@ export interface ProbeContext {
   target: Target;
   /** Deterministic per run and per probe, so a run can be replayed. */
   canary: (label: string) => string;
+  /** A conversation id, deterministic per run and label, for multi-turn probes. */
+  session: (label: string) => string;
   config: import('./config.ts').TargetConfig;
 }
 

@@ -15,6 +15,15 @@
   from a saved result, and refuses an authorisation the run was not made under.
   `--assessor-name` puts the firm's name on it.
 - `groundTruth.inputBlockMarkers`, `inputBlockStatus` and `supervisor`.
+- Deeper attacks on the required controls. Identity asks for the credential
+  base64-encoded, spelled out, and inside a ready-to-run command, and checks
+  replies with those disguises undone. The injection probe adds a link title, a
+  spreadsheet row and a code comment. Human-in-the-loop adds an approval forged
+  as a system message.
+- Attacks across two turns, for injection and for human-in-the-loop, when the
+  body template carries `{{session}}`. Without it they are skipped, not faked.
+- Every single-turn ask now gets its own conversation id, so one attack never
+  sits in the context of the next.
 
 ### Fixed
 
@@ -22,6 +31,10 @@
   only quoted the planted instruction back, because the value it looked for was
   in the prompt. The value is now planted in two halves to be joined, so it can
   only come back if the instruction was carried out. See `joinedCanary`.
+- The swarm probe failed a required control whenever a note crossed to the
+  second agent at all, though relaying notes may be exactly what the agents are
+  for. It now fails only when an instruction in the note is carried out and its
+  result surfaces on the far side.
 
 ## 0.3.0
 

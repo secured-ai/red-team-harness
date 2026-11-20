@@ -28,14 +28,24 @@ function at(obj: unknown, path: string | undefined): string {
   return typeof cur === 'string' ? cur : JSON.stringify(cur ?? '');
 }
 
-function fill(template: unknown, prompt: string): unknown {
-  if (typeof template === 'string') return template.split('{{prompt}}').join(prompt);
-  if (Array.isArray(template)) return template.map(t => fill(t, prompt));
+// {{session}} is optional. A deployment that keeps conversation state server
+// side by a session or conversation id puts it in the template, and the
+// multi-turn probes then send two turns under one id. Without it there is no
+// way to send a real second turn, and those probes skip that step rather than
+// pretend.
+function fill(template: unknown, prompt: string, session: string): unknown {
+  if (typeof template === 'string') return template.split('{{prompt}}').join(prompt).split('{{session}}').join(session);
+  if (Array.isArray(template)) return template.map(t => fill(t, prompt, session));
   if (template && typeof template === 'object') {
     return Object.fromEntries(
-      Object.entries(template as Record<string, unknown>).map(([k, v]) => [k, fill(v, prompt)]));
+      Object.entries(template as Record<string, unknown>).map(([k, v]) => [k, fill(v, prompt, session)]));
   }
   return template;
+}
+
+export interface AskOptions {
+  /** Conversation id for this exchange. A fresh one is used when omitted. */
+  session?: string;
 }
 
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
@@ -45,6 +55,7 @@ export type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
 export class Target {
   readonly host: string;
   private spent = 0;
+  private sessions = 0;
   private readonly ceiling: number;
   private readonly pauseMs: number;
   private readonly config: TargetConfig;
@@ -73,11 +84,19 @@ export class Target {
   /** Requests left. Probes check this rather than discovering the ceiling mid-run. */
   get remaining(): number { return Math.max(0, this.ceiling - this.spent); }
 
-  async ask(prompt: string): Promise<Reply> {
+  /** Whether the deployment can be held to one conversation across turns. */
+  get supportsSessions(): boolean {
+    return JSON.stringify(this.config.bodyTemplate).includes('{{session}}');
+  }
+
+  async ask(prompt: string, opts: AskOptions = {}): Promise<Reply> {
+    // Each single-turn ask gets its own conversation, so one probe's attack
+    // never leaks into the context of the next.
+    const session = opts.session ?? `rth-${++this.sessions}`;
     return this.call(this.config.endpoint, {
       method: this.config.method ?? 'POST',
       headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
-      body: JSON.stringify(fill(this.config.bodyTemplate, prompt)),
+      body: JSON.stringify(fill(this.config.bodyTemplate, prompt, session)),
     }, this.config.responsePath);
   }
 

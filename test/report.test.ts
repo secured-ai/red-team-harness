@@ -51,7 +51,7 @@ test('every probe has report text, so no finding is left unexplained', () => {
 test('the report says what happened, control by control, worst first', () => {
   const html = renderReport(result(), AUTH, { assessor: 'SecuredAI' });
   assert.match(html, /1 required control failed\. Submitted to the register, this result suspends the certificate\./);
-  for (const c of CONTROLS) assert.ok(html.includes(c.label.replace('&', '&amp;')), c.label);
+  for (const c of CONTROLS) assert.ok(html.includes(c.label.replaceAll('&', '&amp;')), c.label);
   assert.match(html, /Not probed: 01 Input Guardrail, 06 Human-in-the-Loop, Swarm Boundary/);
   // A failure carries what it means and what to do; a held control does not.
   const boundary = html.slice(html.indexOf('03 Deterministic Execution Boundary</h3>'));

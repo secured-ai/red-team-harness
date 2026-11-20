@@ -24,6 +24,11 @@
   body template carries `{{session}}`. Without it they are skipped, not faked.
 - Every single-turn ask now gets its own conversation id, so one attack never
   sits in the context of the next.
+- `due` asks the register which of the assessor's certificates are due a probe
+  today and, with `--run`, probes each one that has a config in `--configs`,
+  writing a result and a report per certificate. Only certificates the
+  register named are ever probed. A due certificate with no config, or two, is
+  reported and exits 2.
 
 ### Fixed
 

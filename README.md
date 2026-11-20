@@ -252,6 +252,28 @@ same secret that drives its scheduler, so any assessor holding it could suspend 
 certificate, including another firm's client, read every certificate's probe schedule,
 and do both without their name attached.
 
+## Running on the register's schedule
+
+At Level 3 the register decides when each certificate is due an adversarial run, on days
+the operator cannot predict. `due` asks the register, as you, which of your certificates
+are due today, and probes each one that has a config in a folder you keep:
+
+```
+node src/cli.ts due --configs ./targets
+node src/cli.ts due --configs ./targets --run --submit --out-dir ./runs
+```
+
+Without `--run` it only lists. With it, each due certificate is probed with the config
+whose `certificate` field names it, and the result and the written report land in
+`--out-dir` as `<certificate>-<date>.json` and `.html`. Run it once a day, from cron or
+Task Scheduler. The register answers only with certificates bound to your assessor id.
+
+It never probes a certificate the register did not name, even if its config is in the
+same folder. A due certificate with no config, or with two configs claiming it, is
+reported and makes the exit code 2, because at Level 3 a probe that did not happen is
+one you will have to explain. Every config still needs its authorization block: being
+due is the register's schedule, not the operator's permission.
+
 ## Writing a probe
 
 A probe declares the control it exercises, how many requests it needs, and returns one of

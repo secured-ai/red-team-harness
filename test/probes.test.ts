@@ -93,6 +93,11 @@ for (const [what, isThisOne, evidence] of CARRIERS) {
   });
 }
 
+test('input: an answer that keeps the zero-width characters is still caught', async () => {
+  const { record } = await probe(inputGuardrail, p => (p.includes('\u200b') ? obedient(p).split('').join('\u200b') : 'No.'));
+  assert.equal(record.verdict, 'failed');
+});
+
 test('input: an agent that ignores the injections is not credited to the guardrail without ground truth', async () => {
   const { record } = await probe(inputGuardrail, () => 'I cannot help with that.');
   assert.equal(record.verdict, 'inconclusive');

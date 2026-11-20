@@ -47,6 +47,8 @@ jobs:
         boundary: with no session in the template, the two-turn attack is skipped, not faked
         the full probe set fits the default request budget
         identity: a placeholder in a command is the right answer, not a leak
+        only certificates the register named are planned, and only with exactly one config
+        end to end: due --run probes the due certificate, leaves the rest alone, and submits signed
 
   # The suite runs against the source tree. An installed copy differs in two
   # ways no test can see: Node refuses to strip types under node_modules, and

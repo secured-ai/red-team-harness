@@ -15,6 +15,7 @@ import { run } from './runner.ts';
 import { buildResult, summarise } from './result.ts';
 import { submit, SubmitError } from './submit.ts';
 import { renderReport, ReportError } from './report.ts';
+import { fetchDue, indexConfigs, plan, outputPaths } from './due.ts';
 import type { Authorization } from './config.ts';
 import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
@@ -30,12 +31,16 @@ const USAGE = `red-team-harness ${version}
   red-team-harness keygen --kid <kid>
   red-team-harness probe --config <file> [options]
   red-team-harness report --result <json> --config <file> [--html <file>] [--assessor-name <name>]
+  red-team-harness due --configs <dir> [--run] [--submit] [--out-dir <dir>]
 
   demo                  probe a broken agent this command starts on loopback,
                         so you can see the output without a target of your own
   keygen                generate your assessor signing key; send only the .public file
   report                rebuild the written report from a saved result and the
                         config the run used
+  due                   ask the register which of your certificates are due a
+                        probe today; with --run, probe each one that has a
+                        config in --configs; with --submit, post the results
 
   --config <file>       target configuration (required)
   --submit              post the result to the register (default: write a report only)
@@ -49,6 +54,11 @@ const USAGE = `red-team-harness ${version}
   --html <file>         write the written report here (default: probe-report.html)
   --assessor-name <n>   your firm's name as it should appear on the report
   --quiet               print the summary line only
+
+  due options:
+  --configs <dir>       folder of target configs, one per certificate
+  --run                 probe the due certificates (default: list them only)
+  --out-dir <dir>       where results and reports go (default: .)
 `;
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
@@ -84,6 +94,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return runDemo({ seed: typeof args.seed === 'string' ? args.seed : undefined });
   }
   if (args._ === 'report') return reportCommand(args);
+  if (args._ === 'due') return dueCommand(args);
   if (args._ !== 'probe') { process.stderr.write(`unknown command. ${USAGE}`); return 2; }
   if (typeof args.config !== 'string') { process.stderr.write(`--config is required\n`); return 2; }
 
@@ -125,22 +136,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     return result.failed.length ? 1 : 0;
   }
 
-  const endpoint = typeof args.register === 'string'
-    ? args.register : 'https://securedai.org/api/certification/probe';
-  const assessorId = typeof args.assessor === 'string' ? args.assessor : (process.env.ASSESSOR_ID ?? '');
-  const keyFile = typeof args['assessor-key'] === 'string' ? args['assessor-key'] : (process.env.ASSESSOR_KEY_FILE ?? '');
+  const endpoint = typeof args.register === 'string' ? args.register : DEFAULT_REGISTER;
 
   try {
-    if (!assessorId || !keyFile) {
-      throw new SubmitError('no assessor key: set ASSESSOR_ID and ASSESSOR_KEY_FILE, or pass --assessor and --assessor-key');
-    }
-    let privateJwk: JsonWebKey & { kid?: string };
-    try {
-      privateJwk = JSON.parse(readFileSync(keyFile, 'utf8'));
-    } catch (e) {
-      throw new SubmitError(`could not read the assessor key at ${keyFile}: ${(e as Error).message}`);
-    }
-    const ack = await submit(result, { endpoint, key: { assessorId, privateJwk } });
+    const ack = await submit(result, { endpoint, key: assessorKeyFrom(args) });
     log(`submitted: ${JSON.stringify(ack)}`);
   } catch (e) {
     if (e instanceof SubmitError) {
@@ -151,6 +150,106 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     throw e;
   }
   return result.failed.length ? 1 : 0;
+}
+
+function assessorKeyFrom(args: Record<string, string | boolean>) {
+  const assessorId = typeof args.assessor === 'string' ? args.assessor : (process.env.ASSESSOR_ID ?? '');
+  const keyFile = typeof args['assessor-key'] === 'string' ? args['assessor-key'] : (process.env.ASSESSOR_KEY_FILE ?? '');
+  if (!assessorId || !keyFile) {
+    throw new SubmitError('no assessor key: set ASSESSOR_ID and ASSESSOR_KEY_FILE, or pass --assessor and --assessor-key');
+  }
+  let privateJwk: JsonWebKey & { kid?: string };
+  try {
+    privateJwk = JSON.parse(readFileSync(keyFile, 'utf8'));
+  } catch (e) {
+    throw new SubmitError(`could not read the assessor key at ${keyFile}: ${(e as Error).message}`);
+  }
+  return { assessorId, privateJwk };
+}
+
+const DEFAULT_REGISTER = 'https://securedai.org/api/certification/probe';
+
+// Exit codes for a due run, worst wins: 0 all clear, 1 a control failed,
+// 2 a due certificate could not be run (no config, two configs, a bad config),
+// 3 a result could not be submitted, 4 a crash.
+async function dueCommand(args: Record<string, string | boolean>): Promise<number> {
+  if (typeof args.configs !== 'string') {
+    process.stderr.write('due needs --configs <folder of target configs>\n');
+    return 2;
+  }
+  if (args.submit && !args.run) {
+    process.stderr.write('--submit needs --run: there is nothing to submit until the probes have run\n');
+    return 2;
+  }
+  const quiet = Boolean(args.quiet);
+  const log = (s: string) => { if (!quiet) process.stderr.write(s + '\n'); };
+  const endpoint = typeof args.register === 'string' ? args.register : DEFAULT_REGISTER;
+
+  let key, due;
+  try {
+    key = assessorKeyFrom(args);
+    due = await fetchDue({ endpoint, key });
+  } catch (e) {
+    if (e instanceof SubmitError) { process.stderr.write(`due: ${e.message}\n`); return 3; }
+    throw e;
+  }
+  const index = await indexConfigs(args.configs);
+  const todo = plan(due, index);
+
+  process.stdout.write(`${key.assessorId}: ${due.due.length} of ${due.checked} certificates due today\n`);
+  for (const r of todo.run) log(`  due  ${r.certificate}  ${r.config}`);
+  for (const c of todo.missing) process.stderr.write(`  MISSING  ${c} is due and there is no config for it in ${args.configs}. This probe will not happen.\n`);
+  for (const a of todo.ambiguous) process.stderr.write(`  REFUSED  ${a.certificate} is claimed by more than one config: ${a.configs.join(', ')}\n`);
+  for (const u of index.unreadable) log(`  skipped  ${u} is not a target config`);
+
+  let code = todo.missing.length || todo.ambiguous.length ? 2 : 0;
+  const worst = (c: number) => { code = Math.max(code, c); };
+  if (!args.run) {
+    log(todo.run.length ? 'not run. Pass --run to probe these now.' : 'nothing to run.');
+    return code;
+  }
+
+  const outDir = typeof args['out-dir'] === 'string' ? args['out-dir'] : '.';
+  const day = new Date().toISOString().slice(0, 10);
+  for (const r of todo.run) {
+    let config, secrets;
+    try {
+      ({ config, secrets } = await loadConfig(r.config));
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      process.stderr.write(`  REFUSED  ${r.certificate}: ${e.message}\n`);
+      worst(2);
+      continue;
+    }
+    if (config.certificate !== r.certificate) {
+      // indexConfigs read the file before ${ENV} was resolved; refuse if the
+      // resolved config names a different certificate.
+      process.stderr.write(`  REFUSED  ${r.config} resolves to certificate ${config.certificate}, not ${r.certificate}\n`);
+      worst(2);
+      continue;
+    }
+    const paths = await outputPaths(outDir, r.certificate, day);
+    log(`probing ${new URL(config.endpoint).host} for ${r.certificate}, authorised by ${config.authorization.authorizedBy}`);
+    const report = await run(new Target(config, secrets), config, {});
+    const result = buildResult(report, config, version);
+    await writeFile(paths.json, JSON.stringify(result, null, 2) + '\n', 'utf8');
+    await writeFile(paths.html, redact(renderReport(result, config.authorization, {
+      assessor: typeof args['assessor-name'] === 'string' ? args['assessor-name'] : undefined,
+    }), secrets), 'utf8');
+    process.stdout.write(summarise(result) + '\n');
+    if (result.failed.length) worst(1);
+    if (args.submit) {
+      try {
+        const ack = await submit(result, { endpoint, key });
+        log(`  submitted: ${JSON.stringify(ack)}`);
+      } catch (e) {
+        if (!(e instanceof SubmitError)) throw e;
+        process.stderr.write(`  submission failed for ${r.certificate}: ${e.message}. The result is at ${paths.json}\n`);
+        worst(3);
+      }
+    }
+  }
+  return code;
 }
 
 // Rebuild the written report later, from the saved result and the config the

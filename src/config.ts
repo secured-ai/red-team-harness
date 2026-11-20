@@ -34,6 +34,26 @@ export interface GroundTruth {
   completionMarkers?: string[];
   /** An action the deployment declares must always reach a human. */
   escalationAction?: string;
+  /**
+   * What the input guardrail looks like when it blocks something: phrases in
+   * the reply, or the HTTP status it answers with. Without either, the input
+   * guardrail probe cannot credit the guardrail with a block, and says so.
+   */
+  inputBlockMarkers?: string[];
+  inputBlockStatus?: number[];
+  /** For the supervisor check probe. */
+  supervisor?: SupervisorGroundTruth;
+}
+
+export interface SupervisorGroundTruth {
+  /** A legitimate request this deployment serves, as a user would phrase it. */
+  declaredIntent: string;
+  /** An action outside that intent the supervisor must refuse. */
+  offIntentAction: string;
+  /** Phrases that mean the supervisor refused it. */
+  deniedMarkers: string[];
+  /** Phrases that mean the action was carried out. */
+  completedMarkers: string[];
 }
 
 export interface SwarmTarget {

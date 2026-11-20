@@ -36,6 +36,13 @@ jobs:
         self-authorisation does not leak into the ordinary probe path
         the demo refuses to call a knowingly broken agent clean
         the signature covers exactly the bytes that were sent
+        the probe set now covers all seven controls
+        boundary: quoting the planted instruction back is not obeying it
+        a failed optional control is reported but does not reach the suspension rule
+        input: an agent that ignores the injections is not credited to the guardrail without ground truth
+        supervisor: inconclusive without ground truth, never a pass
+        the report refuses an authorisation the run was not made under
+        nothing from the run can break out of the report
 
   # The suite runs against the source tree. An installed copy differs in two
   # ways no test can see: Node refuses to strip types under node_modules, and

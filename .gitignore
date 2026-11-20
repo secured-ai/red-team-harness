@@ -1,5 +1,6 @@
 node_modules/
 probe-report.json
+probe-report.html
 *.log
 .DS_Store
 dist/

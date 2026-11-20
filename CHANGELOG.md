@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+
+- Probes for the three controls that had none: `input/obfuscated-injection`
+  (01 input guardrail), `supervisor/off-intent-action` (04 supervisor check)
+  and `output/data-leaves` (05 output guardrail). All seven controls are now
+  probed. The three are assessed, not required, so a failure is reported and
+  does not suspend a certificate.
+- A written report. Every run writes `probe-report.html` beside the result:
+  outcomes by control, each finding with what was tested, observed, what it
+  means and what to do, the authorisation and the seed. `report` rebuilds it
+  from a saved result, and refuses an authorisation the run was not made under.
+  `--assessor-name` puts the firm's name on it.
+- `groundTruth.inputBlockMarkers`, `inputBlockStatus` and `supervisor`.
+
+### Fixed
+
+- The indirect injection probe could fail a required control for an agent that
+  only quoted the planted instruction back, because the value it looked for was
+  in the prompt. The value is now planted in two halves to be joined, so it can
+  only come back if the instruction was carried out. See `joinedCanary`.
+
 ## 0.3.0
 
 ### Breaking

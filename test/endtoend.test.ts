@@ -1,6 +1,6 @@
 // Drives the CLI as a subprocess against a deliberately broken agent on
 // loopback. The unit suite proves each part agrees with itself. This proves
-// the parts agree with each other: config load, budget, four probes, the
+// the parts agree with each other: config load, budget, seven probes, the
 // roll-up, the result file and the exit code, in one run with nothing stubbed
 // but the agent.
 
@@ -44,7 +44,7 @@ async function probeTheBrokenAgent(extra: Record<string, unknown> = {}) {
 
   let code = 0, stdout = '';
   try {
-    ({ stdout } = await run(process.execPath, [CLI, 'probe', '--config', configPath, '--out', out, '--quiet']));
+    ({ stdout } = await run(process.execPath, [CLI, 'probe', '--config', configPath, '--out', out, '--html', join(dir, 'r.html'), '--quiet']));
   } catch (e) {
     const err = e as { code?: number; stdout?: string };
     code = err.code ?? -1;
@@ -54,19 +54,21 @@ async function probeTheBrokenAgent(extra: Record<string, unknown> = {}) {
   return { code, stdout, report: JSON.parse(await readFile(out, 'utf8')) };
 }
 
-test('end to end: the broken agent fails the two controls it should', async () => {
+test('end to end: the broken agent fails the controls it should', async () => {
   const { code, stdout, report } = await probeTheBrokenAgent();
 
-  assert.deepEqual(report.failed.sort(), ['03_execution_boundary', '06_human_in_the_loop']);
+  assert.deepEqual(report.failed.sort(),
+    ['01_input_guardrail', '03_execution_boundary', '05_output_guardrail', '06_human_in_the_loop']);
   assert.deepEqual(report.passed, ['02_identity_separation']);
-  assert.deepEqual(report.inconclusive, ['swarm_boundary']);
+  // No supervisor ground truth and no second surface in this config.
+  assert.deepEqual(report.inconclusive.sort(), ['04_supervisor_check', 'swarm_boundary']);
 
   // This is the expression functions/api/certification/probe.js evaluates, and
   // the whole reason the harness exists: a true here suspends the certificate.
   assert.ok(report.failed.some((c: string) => REQUIRED_CONTROLS.includes(c as never)));
 
   assert.equal(code, 1, 'a run with a failure must not exit 0');
-  assert.match(stdout, /cert-e2e-001: 2 failed, 1 passed, 1 inconclusive/);
+  assert.match(stdout, /cert-e2e-001: 4 failed, 1 passed, 2 inconclusive/);
 });
 
 test('end to end: the report is a complete, replayable record', async () => {
@@ -78,7 +80,7 @@ test('end to end: the report is a complete, replayable record', async () => {
   assert.match(report.authorization, /^[0-9a-f]{64}$/);
   assert.match(report.seed, /^[0-9a-f]{32}$/);
   assert.ok(Date.parse(report.startedAt) <= Date.parse(report.finishedAt));
-  assert.equal(report.probes.length, 4);
+  assert.equal(report.probes.length, 7);
   assert.ok(report.requests > 0 && report.requests <= 40);
 
   // Evidence is published on the register, so it must not carry the payload.
@@ -108,7 +110,7 @@ test('end to end: the same seed reproduces the same verdicts', async () => {
     },
   }));
   try {
-    await run(process.execPath, [CLI, 'probe', '--config', configPath, '--out', out,
+    await run(process.execPath, [CLI, 'probe', '--config', configPath, '--out', out, '--html', join(dir, 'r.html'),
       '--seed', first.report.seed, '--quiet']);
   } catch { /* exit 1 is expected, the report is what matters */ }
   server.close();

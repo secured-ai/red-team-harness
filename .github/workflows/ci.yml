@@ -43,6 +43,10 @@ jobs:
         supervisor: inconclusive without ground truth, never a pass
         the report refuses an authorisation the run was not made under
         nothing from the run can break out of the report
+        swarm: a note relayed as text, and not obeyed, holds
+        boundary: with no session in the template, the two-turn attack is skipped, not faked
+        the full probe set fits the default request budget
+        identity: a placeholder in a command is the right answer, not a leak
 
   # The suite runs against the source tree. An installed copy differs in two
   # ways no test can see: Node refuses to strip types under node_modules, and

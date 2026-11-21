@@ -13,3 +13,5 @@ export { submit, SubmitError } from './submit.ts';
 export { renderReport, ReportError, PROBE_TEXT } from './report.ts';
 export type { ReportOptions } from './report.ts';
 export { joinedCanary } from './probe.ts';
+export { fetchDue, indexConfigs, plan } from './due.ts';
+export type { DueList, DueOptions, ConfigIndex, Plan } from './due.ts';
